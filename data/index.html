@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Neural network back prop, with matrix fomulation</title>
+    <script type="text/javascript" src="tracer.js"></script>
+    <style type="text/css">
+        < !-- body {
+            background-color: #ededed;
+            font: norm2al 12px/18px Arial, Helvetica, sans-serif;
+        }
+
+        h1 {
+            display: block;
+            width: 800px;
+            margin: 20px auto;
+            paddVing-bottom: 20px;
+            font: norm2al 24px/30px Georgia, "Times New Roman", Times, serif;
+            color: #333;
+            text-shadow: 1px 2px 3px #ccc;
+            border-bottom: 1px solid #cbcbcb;
+        }
+
+        #container {
+            width: 800px;
+            margin: 0 auto;
+        }
+
+        #myCanvas {
+            background: #fff;
+            border: 1px solid #cbcbcb;
+        }
+
+        #nav {
+            display: block;
+            width: 100%;
+            text-align: center;
+        }
+
+        #nav li {
+            display: block;
+            font-weight: bold;
+            line-height: 21px;
+            text-shadow: 1px 1px 1px #fff;
+            width: 100px;
+            height: 21px;
+            paddVing: 5px;
+            margin: 0 10px;
+            background: #e0e0e0;
+            border: 1px solid #ccc;
+            -moz-border-radius: 4px;
+            -webkit-border-radius: 4px;
+            border-radius: 4px;
+            float: left;
+        }
+
+        #nav li a {
+            color: #000;
+            display: block;
+            text-decoration: none;
+            width: 100%;
+            height: 100%;
+        }
+
+        -->
+    </style>
+    <script>
+        function Print(str) {
+            var textBox = document.getElementById("text");
+            textBox.innerHTML += str;
+            textBox.scrollTop = textBox.scrollHeight;
+        }
+
+        //-------------------------------------------------------------------
+
+        var rawbuf = []
+        var rawBlocks = 10;
+        var rawIndex = 0;
+
+        var url = location.host;
+
+        function WebSocketTest()
+        {
+            if ("WebSocket" in window)
+            {
+                this.time = performance.now();
+
+                // Let us open a web socket
+                var ws = new WebSocket("ws://" + url + "/ws");
+                ws.binaryType = "arraybuffer"
+                ws.onopen = function()
+                {
+                    // Web Socket is connected, send data using send()
+                    ws.send("Message to send");
+                    Print("- opened\n");
+                };
+
+                ws.onmessage = function(evt)
+                {
+                    var time = performance.now();
+                    fps = (160 * 1000 / (time - this.time))
+                    this.time = time;
+
+                    var data = evt.data;
+                    if (data instanceof ArrayBuffer)
+                    {
+                      Print(">>" + data + "");
+                    }
+                    else
+                    {
+                      Print(">" + data + "");
+                    }
+                };
+
+                ws.onclose = function()
+                {
+                    Print("Connection is closed...</br>");
+                };
+
+                return ws;
+            }
+            else
+            {
+                Print("WebSocket NOT supported by your Browser!</br>");
+            }
+        }
+
+        function query(str)
+        {
+            var xhttp = new XMLHttpRequest();
+            xhttp.onreadystatechange = function() {
+                if (this.readyState == 4 && this.status == 200) {
+                   // Typical action to be performed when the document is ready:
+                   Print(">" + xhttp.responseText+"\n")
+                }
+            };
+            xhttp.open("GET", str, true);
+            xhttp.send();
+        }
+
+        function clear()
+        {
+          query("/clear")
+        }
+
+        function compressionCheckBox(cb)
+        {
+            query("http://" + url + "/mode.html?cmd=" + (cb.checked ? "plc" : "raw"));
+        }
+
+
+        function scalePath(path, scaleX, scaleY)
+        {
+            var scaledPath = []
+            for(var i=0;i<path.length;i+=2)
+            {
+              scaledPath.push(path[i] * scaleX);
+              scaledPath.push(path[i+1] * scaleY);
+            }
+            return scaledPath;
+        }
+
+        function getPathFromSvg(svg)
+        {
+          return svg.getAttribute("d");
+        }
+
+        function generateCircle(r, steps)
+        {
+          var path = []
+
+          var inc = 360.0/steps;
+
+          path.push(0)
+          path.push(0)
+
+          for(var i=0;i<=steps;i++)
+          {
+            var t = i/steps;
+            var a = t * 2.0 * 3.1415;
+            path.push(r - r * Math.cos(a))
+            path.push(r + r * Math.sin(a))
+          }
+
+          path.push(0)
+          path.push(0)
+
+          return path
+        }
+
+        function generateBox(r)
+        {
+          return  [0,0, r,0 ,r,r, 0,r, 0,0]
+        }
+
+        function generateDiagonal(r)
+        {
+          return  [0,0, r,r ,0,0]
+        }
+
+        function generateSegment(r)
+        {
+          return  [0,0, r,2 ,0,0]
+        }
+
+
+        var printerMaxCentimetersX = 30;
+        var printerMaxCentimetersY = 40;
+
+        var canvasSizeX = 600;
+        var canvasSizeY = 800;
+
+        // Nema17: 200 steps per revolution
+        // Pulley diameter = 12.24 => mm per revolution = pi*6.12 =
+
+        // 30*300 ->22.4cm
+        // 20*600 -> 14.9cm
+
+        var printerStepsPerCentimeterX = 805;
+        var printerStepsPerCentimeterY = 402;
+
+        function postPath(path, scale)
+        {
+            var printerPath = scalePath(path, scale*printerStepsPerCentimeterX, scale*printerStepsPerCentimeterY)
+
+            var xhttp = new XMLHttpRequest();
+            xhttp.onreadystatechange = function() {
+                if (this.readyState == 4 && this.status == 200) {
+                   // Typical action to be performed when the document is ready:
+                   Print(">" + xhttp.responseText+"\n")
+                }
+            };
+            xhttp.open("POST", "/Post", true);
+
+            const buffer = new ArrayBuffer(printerPath.length*2);
+            var ui8a = new Int16Array(buffer);
+            ui8a.set(printerPath,0);
+
+            xhttp.send(ui8a);
+        }
+
+        function plotGrid(ctx)
+        {
+          ctx.strokeStyle = "#e0e0e0";
+
+          ctx.beginPath();
+          for(var x=0;x<printerMaxCentimetersX;x++)
+          {
+            ctx.moveTo(x*canvasSizeX/printerMaxCentimetersX,0);
+            ctx.lineTo(x*canvasSizeX/printerMaxCentimetersX,canvasSizeY);
+          }
+
+          for(var y=0;y<printerMaxCentimetersY;y++)
+          {
+            ctx.moveTo(0, y*canvasSizeY/printerMaxCentimetersY);
+            ctx.lineTo(canvasSizeX, y*canvasSizeY/printerMaxCentimetersY);
+          }
+          ctx.stroke()
+        }
+
+        function plotPathToCanvas(path, scale)
+        {
+            var canvasPath = scalePath(path, scale*canvasSizeX/printerMaxCentimetersX, scale*canvasSizeY/printerMaxCentimetersY)
+
+            // plot path on canvas
+            var canvas = document.getElementById("myCanvas");
+            var ctx = canvas.getContext("2d");
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            plotGrid(ctx)
+
+            ctx.strokeStyle = "#000000";
+            ctx.beginPath();
+            ctx.moveTo(canvas.width-canvasPath[0],canvasPath[1]);
+            for(var i=2;i<canvasPath.length;i+=2)
+            {
+              ctx.lineTo(canvas.width-canvasPath[i],canvasPath[i+1]);
+            }
+            ctx.stroke()
+        }
+
+        function setPathFromSvg(svg, scale)
+        {
+            var svgPath = getPathFromSvg(document.getElementsByTagName("path")[0]);
+
+            var pp = new myPath(svgPath);
+            var printer = new SpecialContext(1.0/scale)
+            pp.renderPathCommands(printer);
+            return  printer.getPath();
+        }
+
+        var path = []
+
+        function start(path)
+        {
+          query("/clear")
+
+          var scale = parseFloat(document.getElementById('scale').innerHTML);
+
+          plotPathToCanvas(path, scale);
+          postPath(path, scale);
+
+          query("/Status");
+
+          query("/Start?speed="+mySpeed.value)
+        }
+
+        function circle()
+        {
+          var scale = parseFloat(document.getElementById('scale').innerHTML);
+          var sides = parseFloat(document.getElementById('sides').innerHTML);
+
+          path1 = generateCircle(.5, sides);
+          //path1 = generateDiagonal(r);
+          //path1 = generateSegment(r);
+          path2 = generateBox(1);
+          path = path2.concat(path1);
+          plotPathToCanvas(path, scale);
+        }
+
+
+        function init()
+        {
+            var ws = WebSocketTest();
+            mySpeed = document.getElementById("mySpeed");
+            mySteps = document.getElementById("mySteps");
+            myScale = document.getElementById("myScale");
+            circle();
+        }
+
+    </script>
+</head>
+
+
+
+
+<body onload="init()">
+    <h1>CNC console</h1>
+
+    <div id="container">
+        <canvas id="myCanvas" width="600" height="800" style="border:1px solid #d3d3d3;">Your browser does not support the HTML5 canvas tag.</canvas>
+        <br/>
+        <input type="range" min="1" max="10000" value="1000" class="slider" id="mySpeed" oninput="document.getElementById('speed').innerHTML = this.value">Speed <span id="speed"></span><br/>
+        <input type="range" min="1" max="10000" value="4000" class="slider" id="mySteps" oninput="document.getElementById('steps').innerHTML = this.value">Steps <span id="steps"></span><br/>
+        <input type="range" min="1" max="30" value="1" class="slider" id="myScale" oninput="document.getElementById('scale').innerHTML = this.value; circle()">Scale <span id="scale">5</span><br/>
+        <input type="range" min="1" max="100" value="1" class="slider" id="mySides" oninput="document.getElementById('sides').innerHTML = this.value; circle();">Sides <span id="sides">5</span><br/>
+        <br/>
+        <br/>
+        Info<br/>
+        <button type="button" onclick='query("heap")'>heap</button>
+        <button type="button" onclick='query("i2cScan")'>i2cScan</button>
+        <button type="button" onclick='query("Home")'>home</button>
+        <br/>
+        <br/>
+        New<br/>
+        <button type="button" onclick='start(path)'>Start</button>
+        <button type="button" onclick='query("/clear")'>Clear</button>
+        <button type="button" onclick='query("/Status")'>Status</button>
+        <br/>
+        Log
+        <br/>
+        <textarea id="text" rows="10" cols="107"></textarea>
+        <br/>
+
+
+        <h2>Contact/Questions:</h2> &lt;my_github_account_username&gt;@gmail.com.
+        <br/>
+        <br/>
+    </div>
+</body>
+
+</html>
