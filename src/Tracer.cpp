@@ -10,22 +10,27 @@ struct MoveTo
 };
 
 static std::vector<MoveTo> lineList;
-
 static uint16_t iIndex = 0;
-
 static Bresenham bh;
-
 static unsigned long _time, _steps;
-
 static AsyncWebSocket *pWs;
+static bool bRunning = false;
 
 static void ICACHE_RAM_ATTR Step();
 static void ICACHE_RAM_ATTR Home();
 
 static char operationInProgress[] = "Operation in progress";
 
+bool IsTracerRunning()
+{
+    return bRunning;
+}
+
 void Tracer_SetHandlers(AsyncWebServer *pServer, AsyncWebSocket *pWebSocket)
 {
+  // in case the ESP crashed and we are restarting
+  DisableMotors();
+
   pWs = pWebSocket;
   pServer->on("/MoveTo", HTTP_GET, [](AsyncWebServerRequest *request)
   {
@@ -98,6 +103,7 @@ void Tracer_SetHandlers(AsyncWebServer *pServer, AsyncWebSocket *pWebSocket)
       request->send(200, "text/plain", "Starting...");
       _time = millis();
       aiBegin(Step, speed);
+      bRunning = true;
       return;
     }
 
@@ -112,8 +118,6 @@ void Tracer_SetHandlers(AsyncWebServer *pServer, AsyncWebSocket *pWebSocket)
       return;
     }
 
-    pWs->printfAll("post %u, %u, %u\n", len,index, total);
-
     if (index==0)
     {
       lineList.resize(total/2/2);
@@ -124,7 +128,7 @@ void Tracer_SetHandlers(AsyncWebServer *pServer, AsyncWebSocket *pWebSocket)
     if (index+len==total)
       request->send(200, "text/plain", "OK");
   });
-
+/*
   pServer->on("/ReadSwitches", HTTP_GET, [](AsyncWebServerRequest *request)
   {
     if (aiIsRunning())
@@ -143,15 +147,29 @@ void Tracer_SetHandlers(AsyncWebServer *pServer, AsyncWebSocket *pWebSocket)
 
     request->send(200, "application/json", message);
   });
+*/
+  pServer->on("/PauseAndDisableMotors", HTTP_GET, [](AsyncWebServerRequest *request)
+  {
+    aiEnd();
+    DisableMotors();
+    request->send(200, "text/plain", "OK");
+  });
 
   pServer->on("/Status", HTTP_GET, [](AsyncWebServerRequest *request)
+  {
+    static int posX,posY;
+    bh.GetPos(&posX,&posY);
+    String message  = "{\"index\":" + String(iIndex) + ",\"X\":" + String(posX) + ",\"Y\":" + String(posY) + ",\"running\":" + String(IsTracerRunning()) + "}";
+    request->send(200, "application/json", message);
+  });
+
+  pServer->on("/Status2", HTTP_GET, [](AsyncWebServerRequest *request)
   {
     String message  = "Status:\n iIndex: " + String(iIndex) + "\n size: " + String(lineList.size()) + "\n";
     for (uint16_t i=0;i<lineList.size();i++)
     {
       message  += "mt: (" + String(lineList[i].x) + ", " + String(lineList[i].y) + ")\n";
     }
-
 
     message  += "running: ";
     if (aiIsRunning())
@@ -198,38 +216,32 @@ void ICACHE_RAM_ATTR Step()
 
    if (bDone == true)
    {
-      MoveTo ini = lineList[iIndex++];
+       if (iIndex == lineList.size() || iIndex+1 == lineList.size())
+       {
+           aiEnd();
+           bRunning = false;
+           DisableMotors();
 
-      if (iIndex == lineList.size())
-      {
-        aiEnd();
-        DisableMotors();
+           _time = millis() - _time;
+           pWs->printfAll("Done, steps: %lu, time: %lu ms, freq: %lu steps/sec\n", _steps, _time, _steps*1000 / _time);
 
-        _time = millis() - _time;
-        pWs->printfAll("Done, steps: %lu, time: %lu ms, freq: %lu steps/sec\n", _steps, _time, _steps*1000 / _time);
+           iIndex = 0;
+           return;
+       }
 
-        iIndex = 0;
+        MoveTo ini = lineList[iIndex];
+        iIndex++;
+        MoveTo fin = lineList[iIndex];
+        bDone=bh.Init(ini.x,ini.y,fin.x,fin.y);
+    }
 
-        return;
-      }
+    if (bDone == false)
+    {
+        // compute deltas
+        int stepX, stepY;
+        bDone = bh.Tick(&stepX, &stepY);
 
-      MoveTo fin = lineList[iIndex];
-      bDone=bh.Init(ini.x,ini.y,fin.x,fin.y);
-
-      //pWs->printfAll("--mt %i, %i\n", fin.x,fin.y);
-   }
-
-  if (bDone == false)
-  {
-      // compute deltas
-      int stepX, stepY;
-      bDone = bh.Tick(&stepX, &stepY);
-/*
-      int x,y;
-      bh.GetPos(&x,&y);
-      pWs->printfAll("-- %i, %i   (%i, %i)\n",x,y, stepX, stepY);
-*/
-      MoveRobot(stepX, stepY, 0);
-      _steps++;
-  }
+        MoveRobot(stepX, stepY, 0);
+        _steps++;
+    }
 }

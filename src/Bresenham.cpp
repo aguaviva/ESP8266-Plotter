@@ -1,10 +1,11 @@
 #include "bresenham.h"
+#include "c_types.h"
 
 #define SGN(x) ((x > 0) ? 1 : ((x < 0) ? -1 : 0))
 
 int abs(int a) { return a>0?a:-a;}
 
-bool Bresenham::Init(int x0,int y0,int x1,int y1)
+ICACHE_RAM_ATTR bool Bresenham::Init(int x0,int y0,int x1,int y1)
 {
   m_x0 = x0;
   m_y0 = y0;
@@ -18,13 +19,13 @@ bool Bresenham::Init(int x0,int y0,int x1,int y1)
   return (m_dx==0 && m_dy==0);
 }
 
-void Bresenham::GetPos(int *pX, int *pY)
+ICACHE_RAM_ATTR void Bresenham::GetPos(int *pX, int *pY)
 {
   *pX = m_x0;
   *pY = m_y0;
 }
 
-bool Bresenham::Tick(int *deltaX, int *deltaY)
+ICACHE_RAM_ATTR bool Bresenham::Tick(int *deltaX, int *deltaY)
 {
   int xx = m_x0;
   int yy = m_y0;

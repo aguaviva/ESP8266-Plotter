@@ -15,11 +15,11 @@ void aiBegin(GetSampleFn pfn, unsigned int sampleRate)
   // 80Mhz/16 * 5
 
   int period = 1000000/sampleRate;
-  timer1_write(clockCyclesPerMicrosecond() * period);
-  timer1_enable(TIM_DIV1, TIM_EDGE, TIM_LOOP);
+  timer1_write((clockCyclesPerMicrosecond()/ 16) * period);
+  timer1_enable(TIM_DIV16, TIM_EDGE, TIM_LOOP);
 }
 
-bool aiIsRunning() 
+bool aiIsRunning()
 {
   return bIsRunning;
 }

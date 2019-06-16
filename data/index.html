@@ -135,7 +135,7 @@
                    Print(">" + xhttp.responseText+"\n")
                 }
             };
-            xhttp.open("GET", str, true);
+            xhttp.open("GET", "http://" + url + str, true);
             xhttp.send();
         }
 
@@ -143,12 +143,6 @@
         {
           query("/clear")
         }
-
-        function compressionCheckBox(cb)
-        {
-            query("http://" + url + "/mode.html?cmd=" + (cb.checked ? "plc" : "raw"));
-        }
-
 
         function scalePath(path, scaleX, scaleY)
         {
@@ -205,12 +199,6 @@
         }
 
 
-        var printerMaxCentimetersX = 30;
-        var printerMaxCentimetersY = 40;
-
-        var canvasSizeX = 600;
-        var canvasSizeY = 800;
-
         // Nema17: 200 steps per revolution
         // Pulley diameter = 12.24 => mm per revolution = pi*6.12 =
 
@@ -220,18 +208,20 @@
         var printerStepsPerCentimeterX = 805;
         var printerStepsPerCentimeterY = 402;
 
-        function postPath(path, scale)
+        function postPath(path)
         {
-            var printerPath = scalePath(path, scale*printerStepsPerCentimeterX, scale*printerStepsPerCentimeterY)
+            var printerPath = scalePath(path, printerStepsPerCentimeterX, printerStepsPerCentimeterY)
 
             var xhttp = new XMLHttpRequest();
-            xhttp.onreadystatechange = function() {
-                if (this.readyState == 4 && this.status == 200) {
+            xhttp.onreadystatechange = function()
+            {
+                if (this.readyState == 4 && this.status == 200)
+                {
                    // Typical action to be performed when the document is ready:
                    Print(">" + xhttp.responseText+"\n")
                 }
             };
-            xhttp.open("POST", "/Post", true);
+            xhttp.open("POST", "http://" + url + "/Post", true);
 
             const buffer = new ArrayBuffer(printerPath.length*2);
             var ui8a = new Int16Array(buffer);
@@ -240,45 +230,83 @@
             xhttp.send(ui8a);
         }
 
-        function plotGrid(ctx)
+        class myCanvas
         {
-          ctx.strokeStyle = "#e0e0e0";
+            constructor(printerMaxCentimetersX, printerMaxCentimetersY)
+            {
+                this.printerMaxCentimetersX = printerMaxCentimetersX;
+                this.printerMaxCentimetersY = printerMaxCentimetersY;
 
-          ctx.beginPath();
-          for(var x=0;x<printerMaxCentimetersX;x++)
-          {
-            ctx.moveTo(x*canvasSizeX/printerMaxCentimetersX,0);
-            ctx.lineTo(x*canvasSizeX/printerMaxCentimetersX,canvasSizeY);
-          }
+                this.canvas = document.getElementById("myCanvas");
+                this.ctx = this.canvas.getContext("2d");
 
-          for(var y=0;y<printerMaxCentimetersY;y++)
-          {
-            ctx.moveTo(0, y*canvasSizeY/printerMaxCentimetersY);
-            ctx.lineTo(canvasSizeX, y*canvasSizeY/printerMaxCentimetersY);
-          }
-          ctx.stroke()
-        }
+                this.canvasSizeX = this.ctx.canvas.width;
+                this.canvasSizeY = this.ctx.canvas.height;
+            }
+            moveTo(x,y)
+            {
+              this.ctx.moveTo(this.canvasSizeX-x*this.canvasSizeX/this.printerMaxCentimetersX, y*this.canvasSizeY/this.printerMaxCentimetersY);
+            }
 
-        function plotPathToCanvas(path, scale)
-        {
-            var canvasPath = scalePath(path, scale*canvasSizeX/printerMaxCentimetersX, scale*canvasSizeY/printerMaxCentimetersY)
+            lineTo(x,y)
+            {
+              this.ctx.lineTo(this.canvasSizeX-x*this.canvasSizeX/this.printerMaxCentimetersX, y*this.canvasSizeY/this.printerMaxCentimetersY);
+            }
 
-            // plot path on canvas
-            var canvas = document.getElementById("myCanvas");
-            var ctx = canvas.getContext("2d");
+            clear()
+            {
+              this.ctx.clearRect(0, 0, this.canvasSizeX, this.canvasSizeY);
+            }
 
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            line(x0,y0,x1,y1)
+            {
+              this.ctx.strokeStyle = "#00ff00";
+              this.ctx.beginPath();
+              this.moveTo(x0,y0);
+              this.lineTo(x1,y1);
+              this.ctx.stroke();
+            }
 
             plotGrid(ctx)
-
-            ctx.strokeStyle = "#000000";
-            ctx.beginPath();
-            ctx.moveTo(canvas.width-canvasPath[0],canvasPath[1]);
-            for(var i=2;i<canvasPath.length;i+=2)
             {
-              ctx.lineTo(canvas.width-canvasPath[i],canvasPath[i+1]);
+                this.ctx.strokeStyle = "#e0e0e0";
+
+                this.ctx.beginPath();
+                for(var x=0;x<this.printerMaxCentimetersX;x++)
+                {
+                    this.moveTo(x,0);
+                    this.lineTo(x,this.canvasSizeY);
+                }
+
+                for(var y=0;y<this.printerMaxCentimetersY;y++)
+                {
+                    this.moveTo(0, y);
+                    this.lineTo(this.canvasSizeX, y);
+                }
+                this.ctx.stroke()
             }
-            ctx.stroke()
+
+            plotPath(path, color, ini, fin)
+            {
+              this.ctx.strokeStyle = color;
+              this.ctx.beginPath();
+              this.moveTo(path[2*ini],path[2*ini+1]);
+              for(var i=2*(ini+1);i<2*fin;i+=2)
+              {
+                this.lineTo(path[i],path[i+1]);
+              }
+              this.ctx.stroke()
+            }
+        }
+
+        function plotPathToCanvas(canvasPath, step)
+        {
+            canvas.clear();
+            canvas.plotGrid();
+
+            canvas.plotPath(canvasPath, "#FF0000", 0, step);
+            step = Math.max(step-1, 0);
+            canvas.plotPath(canvasPath, "#000000", step, canvasPath.length/2);
         }
 
         function setPathFromSvg(svg, scale)
@@ -291,20 +319,52 @@
             return  printer.getPath();
         }
 
+        var myInterval = undefined;
         var path = []
+        function iterate()
+        {
+            var xhttp = new XMLHttpRequest();
+            xhttp.onreadystatechange = function()
+            {
+                if (this.readyState == 4 && this.status == 200)
+                {
+                   // Typical action to be performed when the document is ready:
+                   var myArr = JSON.parse(this.responseText);
+                   if (myArr.running==0)
+                   {
+                      clearInterval(myInterval);
+                      Print(">Done\n")
+                      return;
+                   }
+                   else
+                   {
+                      //Print(">" + myArr.index + "," + myArr.X + "," + myArr.Y  + "\n")
+                   }
+
+                   plotPathToCanvas(path, myArr.index);
+
+                   //get how far we are in the segment
+                   var indexIni = 2*(myArr.index -1);
+
+                   var x0 = path[indexIni];
+                   var y0 = path[indexIni+1];
+                   var x1 = (myArr.X / printerStepsPerCentimeterX);
+                   var y1 = (myArr.Y / printerStepsPerCentimeterY);
+
+                   canvas.line(x0,y0,x1,y1)
+                }
+            };
+            xhttp.open("GET", "http://" + url + "/Status", true);
+            xhttp.send();
+        }
 
         function start(path)
         {
           query("/clear")
-
-          var scale = parseFloat(document.getElementById('scale').innerHTML);
-
-          plotPathToCanvas(path, scale);
-          postPath(path, scale);
-
+          postPath(path);
           query("/Status");
-
           query("/Start?speed="+mySpeed.value)
+          myInterval = setInterval(iterate,500);
         }
 
         function circle()
@@ -317,12 +377,18 @@
           //path1 = generateSegment(r);
           path2 = generateBox(1);
           path = path2.concat(path1);
-          plotPathToCanvas(path, scale);
-        }
 
+          path = scalePath(path, scale, scale)
+
+          plotPathToCanvas(path, 0);
+        }
 
         function init()
         {
+            var printerMaxCentimetersX = 30;
+            var printerMaxCentimetersY = 40;
+            canvas = new myCanvas(printerMaxCentimetersX, printerMaxCentimetersY);
+
             var ws = WebSocketTest();
             mySpeed = document.getElementById("mySpeed");
             mySteps = document.getElementById("mySteps");
@@ -332,9 +398,6 @@
 
     </script>
 </head>
-
-
-
 
 <body onload="init()">
     <h1>CNC console</h1>
@@ -349,15 +412,16 @@
         <br/>
         <br/>
         Info<br/>
-        <button type="button" onclick='query("heap")'>heap</button>
-        <button type="button" onclick='query("i2cScan")'>i2cScan</button>
-        <button type="button" onclick='query("Home")'>home</button>
+        <button type="button" onclick='query("/heap")'>heap</button>
+        <button type="button" onclick='query("/i2cScan")'>i2cScan</button>
+        <button type="button" onclick='query("/Home")'>home</button>
         <br/>
         <br/>
         New<br/>
         <button type="button" onclick='start(path)'>Start</button>
         <button type="button" onclick='query("/clear")'>Clear</button>
         <button type="button" onclick='query("/Status")'>Status</button>
+        <button type="button" onclick='query("/PauseAndDisableMotors")'>Pause</button>
         <br/>
         Log
         <br/>
@@ -370,5 +434,4 @@
         <br/>
     </div>
 </body>
-
 </html>

@@ -12,7 +12,8 @@
 
 #include "Tracer.h"
 
-#include <Wire.h>
+//#include <Wire.h>
+#include "myI2c.h"
 
 #define OTA
 #define HOST_NAME "esp8266-stepper"
@@ -76,8 +77,11 @@ void setup()
   Serial.begin(115200);
   Serial.println();
 
-  Wire.begin(D1,D2);
-  twi_setClock(400000);
+  //Wire.begin(D1,D2);
+  //twi_setClock(400000);
+
+  my_twi_setClock(400000);
+  my_twi_init(D1,D2);
 
   // Wait for connection
   AsyncWiFiManager wifiManager(&server,&dns);
@@ -124,6 +128,7 @@ void setup()
 
       for(int address = 1; address < 127; address++ )
       {
+        /*
         Wire.beginTransmission(address);
         byte error = Wire.endTransmission();
 
@@ -132,11 +137,12 @@ void setup()
           res += address;
           res += ", ";
         }
+        */
       }
 
       request->send(200, "text/plain", "i2cScan: " + res + ". Done");
   });
-
+/*
   server.on("/i2c", HTTP_GET, [](AsyncWebServerRequest *request)
   {
     int port = -1;
@@ -171,7 +177,8 @@ void setup()
 
     request->send(200, "text/plain", "Hello, POST: " + message);
   });
-
+*/
+/*
   server.on("/gpo", HTTP_GET, [](AsyncWebServerRequest *request)
   {
     int status=-1;
@@ -195,7 +202,7 @@ void setup()
 
     request->send(200, "text/plain", "pin: " + String(pin) + ", status: " + String(status));
   });
-
+*/
   server.on("/sleep", HTTP_GET, [](AsyncWebServerRequest *request)
   {
       request->send(200, "text/plain", "ok");
@@ -228,6 +235,13 @@ void setup()
 
 void loop()
 {
-   MDNS.update();
-   ArduinoOTA.handle();
+    MDNS.update();
+    ArduinoOTA.handle();
+/*
+    if (IsTracerRunning())
+    {
+        StepTrace();
+        delayMicroseconds(1000);
+    }
+*/    
 }

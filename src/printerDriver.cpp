@@ -1,8 +1,9 @@
 #include <arduino.h>
 #include "printerDriver.h"
-#include <Wire.h>
+//#include <Wire.h>
+#include "myI2c.h"
 
-static byte MotorByte(bool enable, int dir, bool step)
+static ICACHE_RAM_ATTR byte MotorByte(bool enable, int dir, bool step)
 {
   byte out = 0;
   out |= 8; // used to read input switches, must be set to high
@@ -12,18 +13,23 @@ static byte MotorByte(bool enable, int dir, bool step)
   return out;
 }
 
-void ReadSwitches( bool *pSwitchLimitX, bool *pSwitchLimitY, bool *pSwitchLimitZ)
+ICACHE_RAM_ATTR void ReadSwitches( bool *pSwitchLimitX, bool *pSwitchLimitY, bool *pSwitchLimitZ)
 {
+  /*
   Wire.requestFrom(32, 1);
   uint8_t out = Wire.read();
   Wire.endTransmission();
+  */
+  uint8_t out;
+  my_twi_readFrom(32, &out, 1, 1);
+
 
   *pSwitchLimitX = (out & 0x08)>0;  // short side
   *pSwitchLimitY = (out & 0x80)>0;  // long side
   *pSwitchLimitZ = true;  // up
 }
 
-void MoveRobot(int stepX, int stepY, int stepZ)
+ICACHE_RAM_ATTR void MoveRobot(int stepX, int stepY, int stepZ)
 {
   //read limiting switches
   bool switchLimitX;
@@ -38,13 +44,19 @@ void MoveRobot(int stepX, int stepY, int stepZ)
     stepX = 0;
 
   // step motors
+  /*
   Wire.beginTransmission(32);
   Wire.write(MotorByte(true, stepX, false) | (MotorByte(true, stepY, false)<<4));
   Wire.write(MotorByte(true, stepX,  true) | (MotorByte(true, stepY,  true)<<4));
   Wire.endTransmission();
+  */
+  byte out[2];
+  out[0] = MotorByte(true, stepX, false) | (MotorByte(true, stepY, false)<<4);
+  out[1] = MotorByte(true, stepX,  true) | (MotorByte(true, stepY,  true)<<4);
+  my_twi_writeTo(32, out, 2, 0);
 }
 
-bool HomeRobot()
+ICACHE_RAM_ATTR bool HomeRobot()
 {
   bool switchLimitX;
   bool switchLimitY;
@@ -58,7 +70,12 @@ bool HomeRobot()
 
 void DisableMotors()
 {
+  /*
   Wire.beginTransmission(32);
   Wire.write(MotorByte(false, 0, false) | (MotorByte(false, 0, false)<<4));
   Wire.endTransmission();
+  */
+  byte out = MotorByte(false, 0, false) | (MotorByte(false, 0, false)<<4);
+  my_twi_writeTo(32, &out, 1, 1);
+
 }
