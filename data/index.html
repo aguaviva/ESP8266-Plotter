@@ -144,6 +144,18 @@
           query("/clear")
         }
 
+        function translatePath(path, transX, transY)
+        {
+            var scaledPath = []
+            for(var i=0;i<path.length;i+=2)
+            {
+              scaledPath.push(path[i] + transX);
+              scaledPath.push(path[i+1] + transY);
+            }
+            return scaledPath;
+        }
+
+
         function scalePath(path, scaleX, scaleY)
         {
             var scaledPath = []
@@ -299,6 +311,31 @@
             }
         }
 
+        function computeBoundingBox(path)
+        {
+            var minX = 1000000;
+            var minY = 1000000;
+            var maxX = -1000000;
+            var maxY = -1000000;
+
+            for(var i=0;i<path.length;i+=2)
+            {
+                if (path[i]<minX)
+                    minX=path[i]
+
+                if (path[i]>maxX)
+                    maxX=path[i]
+
+                if (path[i+1]<minY)
+                    minY=path[i+1]
+
+                if (path[i+1]>maxY)
+                    maxY=path[i+1]
+            }
+            
+            return {centerX:(minX+maxX)/2, centerY:(minY+maxY)/2, width:(maxX-minX), height:(maxY-minY)};
+        }
+
         function plotPathToCanvas(canvasPath, step)
         {
             canvas.clear();
@@ -311,7 +348,7 @@
 
         function setPathFromSvg(svg, scale)
         {
-            var svgPath = getPathFromSvg(document.getElementsByTagName("path")[0]);
+            var svgPath = getPathFromSvg(svg.getElementsByTagName("path")[0]);
 
             var pp = new myPath(svgPath);
             var printer = new SpecialContext(1.0/scale)
@@ -394,6 +431,60 @@
             mySteps = document.getElementById("mySteps");
             myScale = document.getElementById("myScale");
             circle();
+            
+            var dropZone = document.getElementById('myCanvas');
+
+            // Optional.   Show the copy icon when dragging over.  Seems to only work for chrome.
+            dropZone.addEventListener('dragover', function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+            });
+
+            // Get file data on drop
+            dropZone.addEventListener('drop', function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                var files = e.dataTransfer.files; // Array of all files
+
+                for (var i=0, file; file=files[i]; i++) {
+                    if (file.type.match(/image.*/)) {
+                        var reader = new FileReader();
+
+                        reader.onload = function(e2) {
+                        
+                            var res = e2.target.result
+                            var pos = res.search("base64,");
+                            if (pos==-1)
+                            {
+                                alert("unknown file");
+                                return;
+                            }
+                            
+                            var decodedData = window.atob(e2.target.result.substring(pos+7));
+                            
+                             var parser = new DOMParser();
+                             var xmlDoc = parser.parseFromString(decodedData, "text/xml");
+                             path = setPathFromSvg(xmlDoc, 1)  
+                             
+                             var bbox = computeBoundingBox(path);
+                             path = translatePath(path, -bbox.centerX, -bbox.centerY);
+                             
+                             var scale = 20;
+                             
+                             var scl = (scale/bbox.width);
+                             
+                             path = scalePath(path, scl,scl)
+                             path = translatePath(path, (scale/2), (scale/2)*bbox.height/bbox.width);
+                             path = [0,0].concat(path);
+                             plotPathToCanvas(path, 0);
+                        }
+
+                        reader.readAsDataURL(file); // start reading the file data.
+                    }
+                }
+            });
+            
         }
 
     </script>

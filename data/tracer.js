@@ -433,7 +433,7 @@ class SpecialContext
   {
     this.path = [];
     this.scale = scale;
-    this.addPoint(0,0);
+    //this.addPoint(0,0);
   }
 
   addPoint(x,y)
