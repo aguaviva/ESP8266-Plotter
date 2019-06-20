@@ -21,16 +21,11 @@
 */
 #include "arduino.h"
 #include "myI2c.h"
-//#include "twi.h"
-//#include "pins_arduino.h"
-//#include "wiring_private.h"
 
 extern "C" {
 
 static unsigned int preferred_si2c_clock = 100000;
-//#include "twi_util.h"
 
-//#include "ets_sys.h"
 
 static unsigned char twi_dcount = 18;
 static unsigned char twi_sda, twi_scl;
@@ -86,7 +81,7 @@ void my_twi_init(unsigned char sda, unsigned char scl)
   pinMode(twi_sda, INPUT_PULLUP);
   pinMode(twi_scl, INPUT_PULLUP);
   my_twi_setClock(preferred_si2c_clock);
-  my_twi_setClockStretchLimit(230); // default value is 230 uS
+  my_twi_setClockStretchLimit(230/2); // default value is 230 uS
 }
 
 void my_twi_setAddress(uint8_t address)
